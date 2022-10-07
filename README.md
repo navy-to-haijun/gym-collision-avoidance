@@ -6,6 +6,12 @@
 
 - 安装环境，跑通example
 
+### 2022/10/7
+
+* 逐条代码测试 example
+* learning policy 指定要离散动作空间；
+* 确定train过程中的可视化方法(保存每每个episode的图片)
+
 ## 步骤
 
 ```shell

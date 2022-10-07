@@ -13,7 +13,7 @@ import glob
 import imageio
 
 
-matplotlib.rcParams.update({'font.size': 24})
+matplotlib.rcParams.update({'font.size': 12})
 
 plt_colors = []
 plt_colors.append([0.8500, 0.3250, 0.0980])  # orange
@@ -161,7 +161,6 @@ def plot_episode(agents, in_evaluate_mode,
     if show:
         plt.pause(0.0001)
 
-
 def draw_agents(agents, circles_along_traj, ax, last_index=-1):
 
     max_time = max([agent.global_state_history[agent.step_num+last_index, 0] for agent in agents] + [1e-4])
@@ -169,8 +168,13 @@ def draw_agents(agents, circles_along_traj, ax, last_index=-1):
     for i, agent in enumerate(agents):
 
         # Plot line through agent trajectory
-        color_ind = i % len(plt_colors)
-        plt_color = plt_colors[color_ind]
+        # 机器人为一种颜色，行人为一种颜色
+        if i:
+            plt_color = plt_colors[1]
+        else:
+            plt_color = plt_colors[0]
+        # color_ind = i % len(plt_colors)
+        # plt_color = plt_colors[color_ind]
 
         if circles_along_traj:
             plt.plot(agent.global_state_history[:agent.step_num+last_index+1, 1],
@@ -181,7 +185,7 @@ def draw_agents(agents, circles_along_traj, ax, last_index=-1):
                      color=plt_color, marker='*', markersize=20)
 
             # Display circle at agent pos every circle_spacing (nom 1.5 sec)
-            circle_spacing = 0.4
+            circle_spacing = 0.8
             circle_times = np.arange(0.0, agent.global_state_history[agent.step_num+last_index, 0],
                                      circle_spacing)
             _, circle_inds = find_nearest(agent.global_state_history[:agent.step_num, 0],
@@ -196,7 +200,7 @@ def draw_agents(agents, circles_along_traj, ax, last_index=-1):
                              fill=True))
 
             # Display text of current timestamp every text_spacing (nom 1.5 sec)
-            text_spacing = 1.5
+            text_spacing = 3
             text_times = np.arange(0.0, agent.global_state_history[agent.step_num+last_index, 0],
                                    text_spacing)
             _, text_inds = find_nearest(agent.global_state_history[:agent.step_num, 0],

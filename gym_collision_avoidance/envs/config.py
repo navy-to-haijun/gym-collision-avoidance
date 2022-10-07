@@ -3,12 +3,12 @@ import numpy as np
 class Config(object):
     def __init__(self):
         #########################################################################
-        # GENERAL PARAMETERS
+        # 一般参数
         self.COLLISION_AVOIDANCE = True
-        self.continuous, self.discrete = range(2) # Initialize game types as enum
+        self.continuous, self.discrete = range(2) # 初始化动作类型：离散型：discrete = 1；continuous=0
         self.ACTION_SPACE_TYPE   = self.continuous
 
-        ### DISPLAY
+        ### 显示
         self.ANIMATE_EPISODES    = False
         self.SHOW_EPISODE_PLOTS = False
         self.SAVE_EPISODE_PLOTS = False
@@ -177,7 +177,7 @@ class Config(object):
     def setup_obs(self):
         if not hasattr(self, "STATES_IN_OBS"):
             self.STATES_IN_OBS = ['is_learning', 'num_other_agents', 'dist_to_goal', 'heading_ego_frame', 'pref_speed', 'radius', 'other_agents_states']
-            # STATES_IN_OBS = ['dist_to_goal', 'radius', 'heading_ego_frame', 'pref_speed', 'other_agent_states', 'use_ppo', 'laserscan']
+            # self.STATES_IN_OBS = ['dist_to_goal', 'radius', 'heading_ego_frame', 'pref_speed', 'other_agent_states', 'use_ppo', 'laserscan']
             # STATES_IN_OBS = ['dist_to_goal', 'radius', 'heading_ego_frame', 'pref_speed', 'other_agent_states', 'use_ppo'] # 2-agent net
             # STATES_IN_OBS = ['dist_to_goal', 'radius', 'heading_ego_frame', 'pref_speed', 'other_agents_states', 'use_ppo', 'num_other_agents', 'laserscan'] # LSTM
         if not hasattr(self, "STATES_NOT_USED_IN_POLICY"):
@@ -205,6 +205,9 @@ class Example(EvaluateConfig):
         self.SAVE_EPISODE_PLOTS = True
         self.PLOT_CIRCLES_ALONG_TRAJ = True
         self.ANIMATE_EPISODES = True
+        self.SHOW_EPISODE_PLOTS = False
+        ANIMATE_EPISODES = False
+        
         # self.SENSING_HORIZON = 4
         # self.PLT_LIMITS = [[-20, 20], [-20, 20]]
         # self.PLT_FIG_SIZE = (10,10)
