@@ -200,7 +200,7 @@ def draw_agents(agents, circles_along_traj, ax, last_index=-1):
                              fill=True))
 
             # Display text of current timestamp every text_spacing (nom 1.5 sec)
-            text_spacing = 3
+            text_spacing = 2
             text_times = np.arange(0.0, agent.global_state_history[agent.step_num+last_index, 0],
                                    text_spacing)
             _, text_inds = find_nearest(agent.global_state_history[:agent.step_num, 0],

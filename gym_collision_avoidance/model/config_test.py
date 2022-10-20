@@ -16,4 +16,16 @@ class Train(Config):
         self.DT = 0.1
         self.PLOT_CIRCLES_ALONG_TRAJ = True
 
-# 
+class Test(Config):
+    def __init__(self):
+        self.MAX_NUM_AGENTS_IN_ENVIRONMENT = 19
+        # self.TRAIN_SINGLE_AGENT = True
+        super().__init__()
+        self.DT = 0.2
+        self.EVALUATE_MODE = True
+        self.TRAIN_MODE = False
+        self.STATES_IN_OBS = ['num_other_agents', 'dist_to_goal', 'heading_ego_frame', 'pref_speed', 'radius', 'other_agents_states']
+        self.SAVE_EPISODE_PLOTS = True
+        self.PLOT_CIRCLES_ALONG_TRAJ = True
+        self.ANIMATE_EPISODES = True
+        self.SHOW_EPISODE_PLOTS = True

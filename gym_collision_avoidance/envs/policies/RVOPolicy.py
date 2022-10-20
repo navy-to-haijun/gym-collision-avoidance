@@ -56,15 +56,23 @@ class RVOPolicy(InternalPolicy):
         # Share all agent positions and preferred velocities from environment with RVO simulator
         for a in range(self.n_agents):
             # Copy current agent positions, goal and preferred speeds into np arrays
-            self.pos_agents[a,:] = agents[a].pos_global_frame[:]
-            self.vel_agents[a,:] = agents[a].vel_global_frame[:]
-            self.goal_agents[a,:] = agents[a].goal_global_frame[:]
-            self.pref_speed_agents[a] = agents[a].pref_speed
+            # 如果agent的polic为 “learning”，RVO，默认它禁止在原点（近似看不到）
+            if agents[a].get_agent_data_equiv("policy.str", "learning"): 
+                self.pos_agents[a,:] = np.zeros(2)
+                self.vel_agents[a,:] = np.zeros(2)
+                self.goal_agents[a,:] = np.zeros(2)
+                self.pref_speed_agents[a] = agents[a].pref_speed
+                self.pref_vel_agents[a,:] = np.zeros(2)
+            else:
+                self.pos_agents[a,:] = agents[a].pos_global_frame[:]
+                self.vel_agents[a,:] = agents[a].vel_global_frame[:]
+                self.goal_agents[a,:] = agents[a].goal_global_frame[:]
+                self.pref_speed_agents[a] = agents[a].pref_speed
 
-            # Calculate preferred velocity
-            # Assumes non RVO agents are acting like RVO agents
-            self.pref_vel_agents[a,:] = self.goal_agents[a,:] - self.pos_agents[a,:]
-            self.pref_vel_agents[a,:] = self.pref_speed_agents[a] / np.linalg.norm(self.pref_vel_agents[a,:]) * self.pref_vel_agents[a,:]
+                # Calculate preferred velocity
+                # Assumes non RVO agents are acting like RVO agents
+                self.pref_vel_agents[a,:] = self.goal_agents[a,:] - self.pos_agents[a,:]
+                self.pref_vel_agents[a,:] = self.pref_speed_agents[a] / np.linalg.norm(self.pref_vel_agents[a,:]) * self.pref_vel_agents[a,:]
 
             # Set agent positions and velocities in RVO simulator
             self.sim.setAgentMaxSpeed(self.rvo_agents[a], agents[a].pref_speed)
