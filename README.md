@@ -12,6 +12,14 @@
 * learning policy 指定要离散动作空间；
 * 确定train过程中的可视化方法(保存每每个episode的图片)
 
+## 2022/10/20
+
+* trian 的时候使用RVO策略时无视learning policy
+
+### 2022/10/21
+
+* 使用ppo完成agent到达终点，无障碍物；
+
 ## 步骤
 
 ```shell

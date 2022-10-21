@@ -3,7 +3,7 @@ import os
 import gym
 import numpy as np
 gym.logger.set_level(40)
-os.environ['GYM_CONFIG_PATH'] = "config_test.py"
+os.environ['GYM_CONFIG_PATH'] = "emulation_config.py"
 os.environ['GYM_CONFIG_CLASS'] = 'Test'
 
 from gym_collision_avoidance.model import set_agents
