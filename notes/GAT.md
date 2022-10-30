@@ -27,7 +27,7 @@ $$
 3. Softmax：归一化处理：
 
 $$
-\alpha_{ij}^{l}=\frac{exp(e_{ij}^{l})}{ {\textstyle \sum_{k\subset N(i)}^{}} exp(e_{ik}^{l})} 
+\alpha_{ij}^{l}=\frac{exp(e_{ij}^{l})}{ {\textstyle \sum_{k\subset N(i)}^{}} exp(e_{ik}^{l})}
 $$
 
 4. 聚合：更新节点特征
@@ -70,6 +70,13 @@ pip install torch-geometric
 example
 
 ```python
+import networkx as nx
+from torch_geometric.utils import to_networkx
+
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+import torch
+
 # 组建数据
 # 边索引
 edge_index = torch.tensor([[0, 1],
@@ -103,15 +110,31 @@ class GATConv(in_channels: Union[int, Tuple[int, int]], out_channels: int, heads
 * dropout：注意力系数丢失概率；
 * edge_dim：边缘特征；
 
+## GRU
 
 
 
+![img](https://pic2.zhimg.com/80/v2-49244046a83e30ef2383b94644bf0f31_720w.webp)
 
 
 
+输入：
 
+- $x^t$：t时刻输入；
+- $h^{t-1}$：前一时刻的隐藏状态；
 
+输出：
 
+- $y^t$
+- $h^t$
+
+### GRU 内部结构
+
+![img](https://pic3.zhimg.com/80/v2-5b805241ab36e126c4b06b903f148ffa_720w.webp)
+
+门控信号：$r$ 重置门控  $z$：更新门控
+
+根据重置门控信号，重置数据$h^{t-1^{'}} = h^{t-1}\odot r$
 
 
 
