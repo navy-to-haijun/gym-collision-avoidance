@@ -112,7 +112,7 @@ class Agent(object):
         self.ran_out_of_time = False
 
         self.num_states_in_history = int(1.2*self.time_remaining_to_reach_goal / self.dt_nominal)
-        self.global_state_history = np.empty((self.num_states_in_history, self.global_state_dim))
+        self.global_state_history = np.zeros((self.num_states_in_history, self.global_state_dim))
         self.ego_state_history = np.empty((self.num_states_in_history, self.ego_state_dim))
 
         # self.past_actions = np.zeros((self.num_actions_to_store,2))

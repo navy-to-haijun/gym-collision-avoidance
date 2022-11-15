@@ -1,4 +1,9 @@
 from ast import arg
+from enum import Flag
+from errno import ESTALE
+from time import pthread_getcpuclockid
+from tkinter.messagebox import NO
+from traceback import print_tb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,52 +23,6 @@ def orthogonal_init(layer, gain=np.sqrt(2)):
         elif 'weight' in name:
             nn.init.orthogonal_(param, gain=gain)
     return layer
-
-# GAT 层
-class GATLayer(nn.Module):
-    """
-    Simple PyTorch Implementation of the Graph Attention layer.
-    """
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True):
-        super(GATLayer, self).__init__()
-        self.dropout       = dropout        # drop prob = 0.6
-        self.in_features   = in_features    # 
-        self.out_features  = out_features   # 
-        self.alpha         = alpha          # LeakyReLU with negative input slope, alpha = 0.2
-        self.concat        = concat         # conacat = True for all layers except the output layer.
-
-        # Xavier Initialization of Weights
-        # W , a 学习参数
-        self.W = nn.Parameter(torch.zeros(size=(in_features, out_features)))
-        nn.init.xavier_uniform_(self.W.data, gain=1.414)
-        self.a = nn.Parameter(torch.zeros(size=(2*out_features, 1)))
-        nn.init.xavier_uniform_(self.a.data, gain=1.414)
-        
-        # 激活函数：LeakyReLU
-        self.leakyrelu = nn.LeakyReLU(self.alpha)
-
-    def forward(self, input, adj):
-        # 线性变换
-        h = torch.mm(input, self.W)
-        N = h.size()[0]
-
-        # Attention Mechanism
-        a_input = torch.cat([h.repeat(1, N).view(N * N, -1), h.repeat(N, 1)], dim=1).view(N, -1, 2 * self.out_features)
-        e       = self.leakyrelu(torch.matmul(a_input, self.a).squeeze(2))
-
-        # Masked Attention
-        zero_vec  = -9e15*torch.ones_like(e)
-        attention = torch.where(adj > 0, e, zero_vec)
-        
-        attention = F.softmax(attention, dim=1)
-        attention = F.dropout(attention, self.dropout, training=self.training)
-        h_prime   = torch.matmul(attention, h)
-
-        if self.concat:
-            return F.elu(h_prime)
-        else:
-            return h_prime
-
 # 模型
 class Actor_Critic_GAT_RNN(torch.nn.Module):
     def __init__(self, args):
@@ -80,106 +39,123 @@ class Actor_Critic_GAT_RNN(torch.nn.Module):
         self.critic_rnn_hidden = None
         self.activate_func = nn.Tanh()
 
+        self.robot_features = 4
+        self.human_features = 7
+        # 特征嵌入
+        self.robot_fc1 = nn.Linear(self.robot_features, 12)
+        self.robot_fc2 = nn.Linear(12, 32)
+        self.robot_fc3 = nn.Linear(32, 16)
+
+        self.human_fc1 = nn.Linear(self.human_features, 16)
+        self.human_fc2 = nn.Linear(16, 32)
+        self.human_fc3 = nn.Linear(32, 16)
+
+        # 注意力图
+        self.gat_conv1 = GATConv(16, 32 ,heads=6, dropout=0.6)
+        self.gat_conv2 = GATConv(32*6, 16, concat=False, dropout=0.6)
+
+        # 行人特征聚合网络
+        self.human_GRU = nn.GRU(16, 32, 2, batch_first=True)
+        self.human_fc4 = nn.Linear(64, 16)
+        self.human_rnn_hidden = None
+
         # actor
-        # GAT
-        self.actor_conv1 = GATConv(self.input_features, self.hid, heads=self.in_head, dropout=0.6)
-        self.actor_conv2 = GATConv(self.hid*self.in_head, self.output_features, concat=False,
-                             heads=self.out_head, dropout=0.6)
-        # GRU
-        self.actor_fc1 = nn.Linear(self.output_features + 4,self.fc1_hidden)
-        self.actor_rnn = nn.GRU(self.fc1_hidden, self.rnn_hidden_dim, batch_first=True)
-        self.actor_fc2 = nn.Linear(self.rnn_hidden_dim, self.action_dim)
+        self.actor_rnn = nn.GRU(36, 64, 2, batch_first=True)
+        self.actor_fc1 = nn.Linear(64, 128)
+        self.actor_fc2 = nn.Linear(128, 256)
+        self.actor_fc3 = nn.Linear(256, 256)
+        self.actor_fc4 = nn.Linear(256, 61)
 
         # critic
-        # GAT
-        self.critic_conv1 = GATConv(self.input_features, self.hid, heads=self.in_head, dropout=0.6)
-        self.critic_conv2 = GATConv(self.hid*self.in_head, self.output_features, concat=False,
-                             heads=self.out_head, dropout=0.6)
-        # GRU
-        self.critic_fc1 = nn.Linear(self.output_features + 4,self.fc1_hidden)
-        self.critic_rnn = nn.GRU(self.fc1_hidden, self.rnn_hidden_dim, batch_first=True)
-        self.critic_fc2 = nn.Linear(self.rnn_hidden_dim, 1)
+        self.critic_rnn = nn.GRU(36, 64, 2, batch_first=True)
+        self.critic_fc1 = nn.Linear(64, 128)
+        self.critic_fc2 = nn.Linear(128, 64)
+        self.critic_fc3 = nn.Linear(64, 32)
+        self.critic_fc4 = nn.Linear(32, 1)
 
-    def actor(self, data, robot_features):
+
+    def feature_embeding(self,robot, human):
+        robot = self.robot_fc1(robot)
+        robot = self.activate_func(robot)
+        robot = self.robot_fc2(robot)
+        robot = self.activate_func(robot)
+        robot = self.robot_fc3(robot)
+        if  human.numel():
+            human = self.human_fc1(human)
+            human = self.activate_func(human)
+            human = self.human_fc2(human)
+            human = self.activate_func(human)
+            human = self.human_fc3(human)
+
+        return robot, human 
+    
+    def human_network(self,x):
+        x, self.human_rnn_hidden = self.human_GRU(x, self.human_rnn_hidden)
+        h = torch.cat(self.human_rnn_hidden.split(1), dim=-1)
+        h = self.activate_func(h)
+        h = self.human_fc4(h)
+        return h
+
+    def gat_network(self,data, robot_features):
+        robot = None
+        human = None
+        robot_human = torch.zeros(len(data.ptr)-1, 32+4)
+
         x, edge_index = data.x, data.edge_index
-        # robot 节点索引
-        robot_index = data.ptr[:-1]
-        x = self.actor_conv1(x, edge_index) 
+        x= self.gat_conv1(x, edge_index)
         x = self.activate_func(x)
-        x = self.actor_conv2(x, edge_index)
-        # 提取 GAT 后 robot 的特征
-        x = torch.index_select(x, 0, robot_index)
-        # 拼接robot的特征
-        x = torch.cat((x, robot_features),dim=1)
-        # GRU
+        x = self.gat_conv2(x, edge_index)
+
+        for i in range(len(data.ptr)-1):
+            origin_robot = robot_features[i,:].unsqueeze(0)
+            robot = torch.index_select(x, 0, data.ptr[i])          # GAT后robot特征
+            index = torch.arange(data.ptr[i]+1, data.ptr[i+1], 1)  
+            if index.numel():
+                human = torch.index_select(x, 0, index)            # GAT后human特征
+                self.human_rnn_hidden = None
+                human = self.human_network(human)                   #聚合后human特征
+                robot_human[i,:] = torch.cat((robot,origin_robot ,human), dim=1) 
+            else:
+                pass
+                a = torch.zeros(1,16)
+                robot_human[i,:] = torch.cat((robot,origin_robot, a), dim=1) 
+        # 变换维度
+        dim = robot_human.shape
+        if dim[0] > 2:
+            robot_human = robot_human.reshape(2,-1,32+4)
+        return robot_human
+    
+    
+    def actor(self, x):
+
+        x, self.actor_rnn_hidden= self.actor_rnn(x, self.actor_rnn_hidden)
+        x = self.activate_func(x)
         x = self.actor_fc1(x)
         x = self.activate_func(x)
-        x, self.actor_rnn_hidden = self.actor_rnn(x, self.actor_rnn_hidden)
-        logit = self.actor_fc2(x)
-        return logit
-    def critic(self, data, robot_features):
-        x, edge_index = data.x, data.edge_index
-        # robot 节点索引
-        robot_index = data.ptr[:-1]
-        x = self.critic_conv1(x, edge_index)
+        x = self.actor_fc2(x)
         x = self.activate_func(x)
-        x = self.critic_conv2(x, edge_index)
-        # 提取 GAT 后 robot 的特征
-        x = torch.index_select(x, 0, robot_index)
-        # 拼接robot的特征
-        x = torch.cat((x, robot_features),dim=1)
-        # GRU
+        x = self.actor_fc3(x)
+        x = self.activate_func(x)
+        logit = self.actor_fc4(x)           # 有点问题
+        
+        print(f"=============   {logit.shape}")
+
+        return logit
+    
+    def critic(self, x):
+        x, self.critic_rnn_hidden= self.actor_rnn(x, self.critic_rnn_hidden)
+        x = self.activate_func(x)
         x = self.critic_fc1(x)
         x = self.activate_func(x)
-        x, self.critic_rnn_hidden = self.critic_rnn(x, self.critic_rnn_hidden)
-        value = self.critic_fc2(x)
+        x = self.critic_fc2(x)
+        x = self.activate_func(x)
+        x = self.critic_fc3(x)
+        x = self.activate_func(x)
+        value = self.critic_fc4(x)
+
+        print(f"=============   {value.shape}")
+
         return value
-
-# class Actor_Critic_RNN(nn.Module):
-#     def __init__(self, args):
-#         super(Actor_Critic_RNN, self).__init__()
-#         self.use_gru = args.use_gru
-#         self.activate_func = [nn.ReLU(), nn.Tanh()][args.use_tanh]  # Trick10: use tanh
-
-#         self.actor_rnn_hidden = None
-#         self.actor_fc1 = nn.Linear(args.state_dim, args.hidden_dim)
-#         if args.use_gru:
-#             print("------use GRU------")
-#             self.actor_rnn = nn.GRU(args.hidden_dim, args.hidden_dim, batch_first=True)
-#         else:
-#             print("------use LSTM------")
-#             self.actor_rnn = nn.LSTM(args.hidden_dim, args.hidden_dim, batch_first=True)
-#         self.actor_fc2 = nn.Linear(args.hidden_dim, args.action_dim)
-
-#         self.critic_rnn_hidden = None
-#         self.critic_fc1 = nn.Linear(args.state_dim, args.hidden_dim)
-#         if args.use_gru:
-#             self.critic_rnn = nn.GRU(args.hidden_dim, args.hidden_dim, batch_first=True)
-#         else:
-#             self.critic_rnn = nn.LSTM(args.hidden_dim, args.hidden_dim, batch_first=True)
-#         self.critic_fc2 = nn.Linear(args.hidden_dim, 1)
-
-#         if args.use_orthogonal_init:
-#             print("------use orthogonal init------")
-#             orthogonal_init(self.actor_fc1)
-#             orthogonal_init(self.actor_rnn)
-#             orthogonal_init(self.actor_fc2, gain=0.01)
-#             orthogonal_init(self.critic_fc1)
-#             orthogonal_init(self.critic_rnn)
-#             orthogonal_init(self.critic_fc2)
-
-#     def actor(self, s):
-#         s = self.activate_func(self.actor_fc1(s))
-#         output, self.actor_rnn_hidden = self.actor_rnn(s, self.actor_rnn_hidden)
-#         logit = self.actor_fc2(output)
-#         return logit
-
-#     def critic(self, s):
-#         s = self.activate_func(self.critic_fc1(s))
-#         output, self.critic_rnn_hidden = self.critic_rnn(s, self.critic_rnn_hidden)
-#         value = self.critic_fc2(output)
-#         return value
-
 
 class PPO_discrete_RNN:
     def __init__(self, args):
@@ -200,6 +176,7 @@ class PPO_discrete_RNN:
 
         # self.ac = Actor_Critic_RNN(args)   
         self.ac = Actor_Critic_GAT_RNN(arg) 
+        # self.fea_embed = Feature_Embeding()
         # 优化算法
         self.optimizer = torch.optim.Adam(self.ac.parameters(), lr=self.lr, eps=1e-5)       
 
@@ -242,7 +219,7 @@ class PPO_discrete_RNN:
                 # print(batch['s'][index])
                 batch_graph, robot_features = self.batch_graph_data(batch['s'][index])
                 # print(batch_graph)
-                logits_now = self.ac.actor(batch_graph, robot_features).reshape(self.mini_batch_size, -1, self.action_dim)              # logits_now.shape=(mini_batch_size, max_episode_len, action_dim)
+                logits_now = self.ac.actor(batch_graph, robot_features).reshape(self.mini_batch_size, -1, self.action_dim) # logits_now.shape=(mini_batch_size, max_episode_len, action_dim)
                 values_now = self.ac.critic(batch_graph, robot_features).reshape(self.mini_batch_size, -1, 1).squeeze(-1)  # values_now.shape=(mini_batch_size, max_episode_len)
 
                 dist_now = Categorical(logits=logits_now)
@@ -293,31 +270,44 @@ class PPO_discrete_RNN:
     def states_to_graph(self,s):
         # 获取robot 的节点特征
         robot_features = s[0:4]
+        human_features = None
         # 获取agent的个数
         num_agent = int(s[4])
-        if num_agent == 0:
-            num_agent = 3 
-        # 边索引
-        a = np.zeros(num_agent)
-        b = np.linspace(1 ,num_agent, num_agent)
-        a = np.append(a, b)
-        edge_index = np.vstack((np.append(np.zeros(num_agent), np.linspace(1 ,num_agent, num_agent)),
+        # 视野范围内有行人
+        if num_agent:  
+            edge_index = np.vstack((np.append(np.zeros(num_agent), np.linspace(1 ,num_agent, num_agent)),
                                     np.append(np.linspace(1 ,num_agent, num_agent),np.zeros(num_agent))),
                             )
-        edge_index = torch.tensor(edge_index, dtype=torch.long)
-        # 节点特征 
-        node_feature = s[0:4]
-        for i in range(5, num_agent*7, 7):
-            node_feature = np.vstack((node_feature, s[i:i+4]))
-        node_feature = torch.tensor(node_feature, dtype=torch.float)
-        # 一张图的数据结构
-        data = Data(x=node_feature, edge_index=edge_index)
+            # 行人特征
+            human_features = s[5:5+7]
+            for i in range(5+7, num_agent*7, 7):
+                human_features = torch.vstack((human_features, s[i:i+7]))
+        # 视野范围内无行人
+        else:
+            edge_index = np.array([[0],[0]])
+            human_features = torch.tensor([], dtype=torch.float32)
+        # 特征嵌入
+        robot_features = robot_features.unsqueeze(0)     # 扩充维度
+        if num_agent == 1:
+            human_features = human_features.unsqueeze(0)
+
+        robot, human = self.ac.feature_embeding(robot_features, human_features)
+
+        # return robot, human
+        # 构建图
+        edge_index = torch.tensor(edge_index, dtype=torch.long) # 节点
+        if human.numel():
+            node_feature = torch.vstack((robot, human))
+        else:
+            node_feature = robot
+        data = Data(x=node_feature, edge_index=edge_index)     # 一张图的数据结构
         
-        return data, robot_features
+        return data, s[0:4]
 
     def batch_graph_data(self,s):
+        dim = s.shape
         # 变换维度
-        s = s.reshape(-1, 68)
+        s = s.reshape(-1, dim[2])
         # 存储批量图数据
         data_list = []
         robot_features_list = torch.zeros((s.shape[0], 4))
@@ -328,6 +318,9 @@ class PPO_discrete_RNN:
         
         loader = DataLoader(dataset=data_list, batch_size=len(data_list), shuffle=False)
         batch = next(iter(loader))
+        x = self.ac.gat_network(batch, robot_features_list)
+        x2 = self.ac.actor(x)
+        x1 = self.ac.critic(x)
         return batch, robot_features_list
 
     def load(self, args, checkpoint_path):
