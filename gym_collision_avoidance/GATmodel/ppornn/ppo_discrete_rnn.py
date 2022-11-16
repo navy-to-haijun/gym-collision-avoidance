@@ -27,14 +27,7 @@ def orthogonal_init(layer, gain=np.sqrt(2)):
 class Actor_Critic_GAT_RNN(torch.nn.Module):
     def __init__(self, args):
         super(Actor_Critic_GAT_RNN, self).__init__()
-        self.input_features = 4                 # 输入特征维度
-        self.hid = 16                           # 隐藏层的维度
-        self.in_head = 6                        # 注意力头数
-        self.output_features = 32               # 输出特征维度
-        self.out_head = 1
-        self.fc1_hidden = 64
-        self.rnn_hidden_dim = 64
-        self.action_dim = 11
+        self.action_dim = 48
         self.actor_rnn_hidden = None
         self.critic_rnn_hidden = None
         self.activate_func = nn.Tanh()
@@ -64,7 +57,7 @@ class Actor_Critic_GAT_RNN(torch.nn.Module):
         self.actor_fc1 = nn.Linear(64, 128)
         self.actor_fc2 = nn.Linear(128, 256)
         self.actor_fc3 = nn.Linear(256, 256)
-        self.actor_fc4 = nn.Linear(256, 61)
+        self.actor_fc4 = nn.Linear(256, self.action_dim)
 
         # critic
         self.critic_rnn = nn.GRU(36, 64, 2, batch_first=True)
@@ -136,10 +129,7 @@ class Actor_Critic_GAT_RNN(torch.nn.Module):
         x = self.activate_func(x)
         x = self.actor_fc3(x)
         x = self.activate_func(x)
-        logit = self.actor_fc4(x)           # 有点问题
-        
-        print(f"=============   {logit.shape}")
-
+        logit = self.actor_fc4(x)   
         return logit
     
     def critic(self, x):
@@ -152,9 +142,6 @@ class Actor_Critic_GAT_RNN(torch.nn.Module):
         x = self.critic_fc3(x)
         x = self.activate_func(x)
         value = self.critic_fc4(x)
-
-        print(f"=============   {value.shape}")
-
         return value
 
 class PPO_discrete_RNN:
@@ -174,9 +161,7 @@ class PPO_discrete_RNN:
         self.use_adv_norm = args.use_adv_norm
         self.action_dim = args.action_dim
 
-        # self.ac = Actor_Critic_RNN(args)   
         self.ac = Actor_Critic_GAT_RNN(arg) 
-        # self.fea_embed = Feature_Embeding()
         # 优化算法
         self.optimizer = torch.optim.Adam(self.ac.parameters(), lr=self.lr, eps=1e-5)       
 
@@ -186,9 +171,9 @@ class PPO_discrete_RNN:
 
     def choose_action(self, s, evaluate=False):
         with torch.no_grad():
-            s = torch.tensor(s, dtype=torch.float)
-            batch_graph, robot_features = self.batch_graph_data(s)
-            logit = self.ac.actor(batch_graph, robot_features)
+            s = torch.tensor(s, dtype=torch.float).unsqueeze(0).unsqueeze(0)    # 扩充维度         
+            gat_features= self.batch_graph_data(s)
+            logit = self.ac.actor(gat_features)
             if evaluate:
                 a = torch.argmax(logit)
                 return a.item(), None
@@ -200,27 +185,25 @@ class PPO_discrete_RNN:
 
     def get_value(self, s):
         with torch.no_grad():
-            s = torch.tensor(s, dtype=torch.float).unsqueeze(0)
-            batch_graph, robot_features = self.batch_graph_data(s)
-            value = self.ac.critic(batch_graph, robot_features)
+            s = torch.tensor(s, dtype=torch.float).unsqueeze(0).unsqueeze(0)  # 扩充维度   
+            gat_features= self.batch_graph_data(s)
+            value = self.ac.critic(gat_features)
             return value.item()
 
     def train(self, replay_buffer, total_steps, writer):
         batch = replay_buffer.get_training_data()  # 得到训练数据:dytype: 列表
-        actor_log_loss = []
-        critic_log_loss = []
-
+        log_loss = []
         # Optimize policy for K epochs:
-        for _ in range(self.K_epochs):
+        for i in range(self.K_epochs):
             # 批量采样：mini_batch_size
             for index in BatchSampler(SequentialSampler(range(self.batch_size)), self.mini_batch_size, False):
                 # 初始化隐藏层
                 self.reset_rnn_hidden()
                 # print(batch['s'][index])
-                batch_graph, robot_features = self.batch_graph_data(batch['s'][index])
+                gat_features = self.batch_graph_data(batch['s'][index])
                 # print(batch_graph)
-                logits_now = self.ac.actor(batch_graph, robot_features).reshape(self.mini_batch_size, -1, self.action_dim) # logits_now.shape=(mini_batch_size, max_episode_len, action_dim)
-                values_now = self.ac.critic(batch_graph, robot_features).reshape(self.mini_batch_size, -1, 1).squeeze(-1)  # values_now.shape=(mini_batch_size, max_episode_len)
+                logits_now = self.ac.actor(gat_features) # logits_now.shape=(mini_batch_size, max_episode_len, action_dim)
+                values_now = self.ac.critic(gat_features).squeeze(-1)  # values_now.shape=(mini_batch_size, max_episode_len)
 
                 dist_now = Categorical(logits=logits_now)
                 dist_entropy = dist_now.entropy()  # shape(mini_batch_size, max_episode_len)
@@ -237,9 +220,6 @@ class PPO_discrete_RNN:
                 # critic_loss
                 critic_loss = (values_now - batch['v_target'][index]) ** 2
                 critic_loss = (critic_loss * batch['active'][index]).sum() / batch['active'][index].sum()
-
-                actor_log_loss.append(actor_loss)
-                critic_log_loss.append(actor_loss)
                 # Update
                 self.optimizer.zero_grad()
                 loss = actor_loss + critic_loss * 0.5
@@ -247,9 +227,9 @@ class PPO_discrete_RNN:
                 if self.use_grad_clip:  # Trick 7: Gradient clip
                     torch.nn.utils.clip_grad_norm_(self.ac.parameters(), 0.5)
                 self.optimizer.step()
+                log_loss.append(loss.item())
 
-            writer.add_scalar('actor loss', sum(actor_log_loss)/len(actor_log_loss), global_step=total_steps)
-            writer.add_scalar('critic loss', sum(critic_log_loss)/len(critic_log_loss), global_step=total_steps)
+            # writer.add_scalar('loss', sum(log_loss)/len(log_loss), global_step=total_steps)
             
         if self.use_lr_decay:  # Trick 6:learning rate Decay
             self.lr_decay(total_steps)
@@ -318,10 +298,9 @@ class PPO_discrete_RNN:
         
         loader = DataLoader(dataset=data_list, batch_size=len(data_list), shuffle=False)
         batch = next(iter(loader))
+        # 图网络
         x = self.ac.gat_network(batch, robot_features_list)
-        x2 = self.ac.actor(x)
-        x1 = self.ac.critic(x)
-        return batch, robot_features_list
+        return x
 
     def load(self, args, checkpoint_path):
         checkpoint=torch.load(checkpoint_path)

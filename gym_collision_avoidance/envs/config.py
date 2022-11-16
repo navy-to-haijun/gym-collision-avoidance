@@ -27,16 +27,16 @@ class Config(object):
         self.EVALUATE_MODE       = False # Enable to see the trained agent in action (for testing)
         
         ### REWARDS
-        self.REWARD_AT_GOAL = 10.0 # reward given when agent reaches goal position
-        self.REWARD_COLLISION_WITH_AGENT = -0.25 # reward given when agent collides with another agent
+        self.REWARD_AT_GOAL = 2.5 # 到达目标
+        self.REWARD_COLLISION_WITH_AGENT = -2.0 # 和行人碰撞
         self.REWARD_COLLISION_WITH_WALL = -0.25 # reward given when agent collides with wall
         self.REWARD_GETTING_CLOSE   = -0.1 # reward when agent gets close to another agent (unused?)
         self.REWARD_ENTERED_NORM_ZONE   = -0.05 # reward when agent enters another agent's social zone
-        self.REWARD_TIME_STEP   = -0.01 # default reward given if none of the others apply (encourage speed)
+        self.REWARD_TIME_STEP   = -0.001     # default reward given if none of the others apply (encourage speed)
         self.REWARD_WIGGLY_BEHAVIOR = 0.0
         self.WIGGLY_BEHAVIOR_THRESHOLD = np.inf
         self.COLLISION_DIST = 0.0 # meters between agents' boundaries for collision
-        self.GETTING_CLOSE_RANGE = 0.2 # meters between agents' boundaries for collision
+        self.GETTING_CLOSE_RANGE = 0.25  #侵入行人的范围
         # self.SOCIAL_NORMS = "right"
         # self.SOCIAL_NORMS = "left"
         self.SOCIAL_NORMS = "none"

@@ -23,9 +23,9 @@ from gym_collision_avoidance.envs.vec_env import DummyVecEnv
 
 # 设置agent
 # 随机初始化agentsd的位置
-def generate_random_human_position(v_pref = 1, circle_radius=6, radius = 0.4, min_dist = 1.0):
+def generate_random_human_position(max_agents = 16, v_pref = 1, circle_radius=6, radius = 0.3, min_dist = 1.0):
     agents = []
-    num_agents = np.random.randint(3, 17)   # agent随机
+    num_agents = np.random.randint(3, max_agents+1)   # agent随机
     for i in range(num_agents):
         while True:
             angle = np.random.random() * np.pi * 2
@@ -47,7 +47,7 @@ def generate_random_human_position(v_pref = 1, circle_radius=6, radius = 0.4, mi
                     agents.append(Agent(px,py,gx,gy,radius,v_pref,-(np.pi - angle),LearningPolicyPPO,UnicycleDynamics,[OtherAgentsStatesSensor], i))
                 else:
                     # 行人为随机速度
-                    agents.append(Agent(px,py,gx,gy,radius,np.random.uniform(0.5, 1.0),-(np.pi - angle),RVOPolicy,UnicycleDynamics,[OtherAgentsStatesSensor], i))
+                    agents.append(Agent(px,py,gx,gy,radius,np.random.uniform(0.5, 1.1),-(np.pi - angle),RVOPolicy,UnicycleDynamics,[OtherAgentsStatesSensor], i))
                 break
     return agents
 

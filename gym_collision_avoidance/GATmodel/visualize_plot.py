@@ -217,7 +217,7 @@ def train_plot(agents, attention=0.1, distance = 3, fov = 120):
     ax.set_aspect('equal')
 
     plt.draw()
-    plt.pause(3)
+    plt.pause(0.001)
 
 
         

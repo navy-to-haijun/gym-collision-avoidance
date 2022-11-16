@@ -335,45 +335,44 @@ class CollisionAvoidanceEnv(gym.Env):
                       is a list of scalars if we are training on mult agents
         """
 
-        # if nothing noteworthy happened in that timestep, reward = -0.01
-        rewards = self.reward_time_step*np.ones(len(self.agents))
+        # 奖励靠近目标的行为
+        rewards = np.zeros(len(self.agents))
         collision_with_agent, collision_with_wall, entered_norm_zone, dist_btwn_nearest_agent = \
             self._check_for_collisions()
 
         for i, agent in enumerate(self.agents):
             if agent.is_at_goal:
                 if agent.was_at_goal_already is False:
-                    # agents should only receive the goal reward once
-                    rewards[i] = self.reward_at_goal
-                    # print("Agent %i: Arrived at goal!"
-                          # % agent.id)
+                    rewards[i] = self.reward_at_goal           # 到达目的奖励
             else:
                 # agents at their goal shouldn't be penalized if someone else
                 # bumps into them
                 if agent.was_in_collision_already is False:
                     if collision_with_agent[i]:
-                        rewards[i] = self.reward_collision_with_agent
+                        rewards[i] = self.reward_collision_with_agent   # 行人碰撞奖励
                         agent.in_collision = True
-                        # print("Agent %i: Collision with another agent!"
-                        #       % agent.id)
                     elif collision_with_wall[i]:
                         rewards[i] = self.reward_collision_with_wall
                         agent.in_collision = True
-                        # print("Agent %i: Collision with wall!"
-                              # % agent.id)
                     else:
                         # There was no collision
-                        if dist_btwn_nearest_agent[i] <= Config.GETTING_CLOSE_RANGE:
-                            rewards[i] = -0.1 - dist_btwn_nearest_agent[i]/2.
-                            # print("Agent %i: Got close to another agent!"
-                            #       % agent.id)
-                        if abs(agent.past_actions[0, 1]) > self.wiggly_behavior_threshold:
+                        if dist_btwn_nearest_agent[i] <= Config.GETTING_CLOSE_RANGE:  # 侵犯行人的位置
+                            rewards[i] += 1.5*(dist_btwn_nearest_agent[i] - Config.GETTING_CLOSE_RANGE)
+                        if abs(agent.past_actions[0, 1] - agent.past_actions[1, 1]) > np.pi/3:  # 惩罚摆动行为
                             # Slightly penalize wiggly behavior
-                            rewards[i] += self.reward_wiggly_behavior
-                        # elif entered_norm_zone[i]:
-                        #     rewards[i] = self.reward_entered_norm_zone
-        rewards = np.clip(rewards, self.min_possible_reward,
-                          self.max_possible_reward)
+                            rewards[i] += -0.01
+                        # 奖励接近目标的行为
+                        
+                        old_goal = agent.ego_state_history[agent.step_num-2, 1]
+                        now_goal = agent.ego_state_history[agent.step_num-1, 1]
+                        if old_goal > now_goal:
+                            rewards[i] -= 0.001
+                        else:
+                            rewards[i] -= 0.002
+                            
+        # print(f'={self.agents[0].step_num}*******{rewards[0]}')                                                     
+        # rewards = np.clip(rewards, self.min_possible_reward,
+        #                   self.max_possible_reward)
         if Config.TRAIN_SINGLE_AGENT:
             rewards = rewards[0]
         return rewards
